@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>R-Rhythm: Music Master</title>
+    <style>
+        :root { --dark: #1a1a2e; --neon: #e94560; --glow: #0f3460; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Arial Rounded MT Bold', sans-serif; }
+        body { background: var(--dark); overflow: hidden; touch-action: none; color: white; }
+        
+        #game-area { position: relative; width: 100vw; height: 100vh; display: flex; }
+        .lane { flex: 1; border-right: 1px solid rgba(255,255,255,0.1); position: relative; }
+        
+        .tile { 
+            position: absolute; width: 100%; height: 120px; 
+            background: linear-gradient(to bottom, var(--neon), #950740); 
+            border-radius: 10px; box-shadow: 0 0 15px var(--neon);
+            cursor: pointer;
+        }
+
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; font-size: 30px; pointer-events: none; z-index: 100; text-shadow: 0 0 10px var(--neon); }
+        
+        #msg { 
+            position: fixed; inset: 0; background: rgba(0,0,0,0.9); 
+            display: none; flex-direction: column; align-items: center; 
+            justify-content: center; z-index: 1000; 
+        }
+        .btn { background: var(--neon); border: none; padding: 15px 40px; border-radius: 30px; color: white; font-size: 20px; font-weight: bold; margin-top: 20px; box-shadow: 0 0 20px var(--neon); }
+    </style>
+</head>
+<body>
+
+<div id="ui">SCORE: <span id="score">0</span></div>
+
+<div id="msg">
+    <h1>RITM BUZILDI! 🎵</h1>
+    <p>Sizning balingiz: <span id="final-score">0</span></p>
+    <button class="btn" onclick="location.reload()">QAYTA BOSHLASH</button>
+</div>
+
+<div id="game-area">
+    <div class="lane" onclick="checkClick(0)"></div>
+    <div class="lane" onclick="checkClick(1)"></div>
+    <div class="lane" onclick="checkClick(2)"></div>
+    <div class="lane" onclick="checkClick(3)"></div>
+</div>
+
+<script>
+    const lanes = document.querySelectorAll('.lane');
+    const scoreEl = document.getElementById('score');
+    const msg = document.getElementById('msg');
+    
+    let score = 0;
+    let gameActive = true;
+    let tiles = [];
+    let speed = 5;
+
+    function createTile() {
+        if (!gameActive) return;
+        const laneIdx = Math.floor(Math.random() * 4);
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.style.top = '-150px';
+        lanes[laneIdx].appendChild(tile);
+        
+        tiles.push({ el: tile, lane: laneIdx, y: -150 });
+        
+        setTimeout(createTile, Math.max(400, 1000 - score * 2));
+    }
+
+    function update() {
+        if (!gameActive) return;
+
+        tiles.forEach((tile, index) => {
+            tile.y += speed;
+            tile.el.style.top = tile.y + 'px';
+
+            // Agar tile ekrandan chiqib ketsa (o'tkazib yuborilsa)
+            if (tile.y > window.innerHeight) {
+                gameOver();
+            }
+        });
+
+        requestAnimationFrame(update);
+    }
+
+    function checkClick(laneIdx) {
+        if (!gameActive) return;
+        
+        // Shu laneda eng pastda turgan tileni topish
+        const laneTiles = tiles.filter(t => t.lane === laneIdx);
+        if (laneTiles.length > 0) {
+            const nearestTile = laneTiles[0];
+            
+            // Masofani tekshirish (ekranning pastki qismida bo'lishi kerak)
+            if (nearestTile.y > window.innerHeight - 300) {
+                score += 20;
+                scoreEl.innerText = score;
+                nearestTile.el.remove();
+                tiles = tiles.filter(t => t !== nearestTile);
+                speed += 0.05; // Qiyinlashish
+            } else {
+                gameOver(); // Juda erta bosildi
+            }
+        }
+    }
+
+    function gameOver() {
+        gameActive = false;
+        msg.style.display = 'flex';
+        document.getElementById('final-score').innerText = score;
+    }
+
+    createTile();
+    update();
+</script>
+</body>
+</html>
