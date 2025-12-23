@@ -1,119 +1,170 @@
 <!DOCTYPE html>
-<html lang="uz">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>R-Rhythm: Music Master</title>
+    <title>R-Rhythm: Digital Dungeon</title>
     <style>
-        :root { --dark: #1a1a2e; --neon: #e94560; --glow: #0f3460; }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Arial Rounded MT Bold', sans-serif; }
-        body { background: var(--dark); overflow: hidden; touch-action: none; color: white; }
+        :root { --wall: #1a1a2e; --floor: #0f0f1a; --hero: #00f3ff; --enemy: #ff0055; }
+        body { margin: 0; overflow: hidden; background: var(--floor); color: white; font-family: 'Orbitron', sans-serif; touch-action: none; }
         
-        #game-area { position: relative; width: 100vw; height: 100vh; display: flex; }
-        .lane { flex: 1; border-right: 1px solid rgba(255,255,255,0.1); position: relative; }
-        
-        .tile { 
-            position: absolute; width: 100%; height: 120px; 
-            background: linear-gradient(to bottom, var(--neon), #950740); 
-            border-radius: 10px; box-shadow: 0 0 15px var(--neon);
-            cursor: pointer;
-        }
+        #hud { position: fixed; top: 15px; width: 100%; display: flex; justify-content: space-around; z-index: 100; pointer-events: none; }
+        .stat { background: rgba(0,0,0,0.8); padding: 8px 15px; border: 1px solid var(--hero); border-radius: 5px; box-shadow: 0 0 10px var(--hero); }
 
-        #ui { position: absolute; top: 20px; width: 100%; text-align: center; font-size: 30px; pointer-events: none; z-index: 100; text-shadow: 0 0 10px var(--neon); }
-        
-        #msg { 
-            position: fixed; inset: 0; background: rgba(0,0,0,0.9); 
-            display: none; flex-direction: column; align-items: center; 
-            justify-content: center; z-index: 1000; 
-        }
-        .btn { background: var(--neon); border: none; padding: 15px 40px; border-radius: 30px; color: white; font-size: 20px; font-weight: bold; margin-top: 20px; box-shadow: 0 0 20px var(--neon); }
+        canvas { display: block; }
+
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
+        button { padding: 15px 50px; font-size: 20px; background: var(--hero); border: none; color: black; font-weight: bold; border-radius: 5px; cursor: pointer; margin-top: 25px; box-shadow: 0 0 20px var(--hero); }
     </style>
 </head>
 <body>
 
-<div id="ui">SCORE: <span id="score">0</span></div>
-
-<div id="msg">
-    <h1>RITM BUZILDI! 🎵</h1>
-    <p>Sizning balingiz: <span id="final-score">0</span></p>
-    <button class="btn" onclick="location.reload()">QAYTA BOSHLASH</button>
+<div id="hud">
+    <div class="stat">HP: <span id="hp">100</span></div>
+    <div class="stat">RC: <span id="rc">0</span></div>
 </div>
 
-<div id="game-area">
-    <div class="lane" onclick="checkClick(0)"></div>
-    <div class="lane" onclick="checkClick(1)"></div>
-    <div class="lane" onclick="checkClick(2)"></div>
-    <div class="lane" onclick="checkClick(3)"></div>
+<div id="start-screen" class="overlay">
+    <h1 style="color: var(--hero); font-size: 40px; margin:0;">R-RHYTHM</h1>
+    <p>Tap to move and attack enemies.<br>Collect crystals to power up!</p>
+    <button onclick="startQuest()">ENTER DUNGEON</button>
 </div>
+
+<canvas id="dungeonCanvas"></canvas>
 
 <script>
-    const lanes = document.querySelectorAll('.lane');
-    const scoreEl = document.getElementById('score');
-    const msg = document.getElementById('msg');
+    const canvas = document.getElementById('dungeonCanvas');
+    const ctx = canvas.getContext('2d');
+    let gameActive = false, rc = 0, hp = 100;
     
-    let score = 0;
-    let gameActive = true;
-    let tiles = [];
-    let speed = 5;
+    const hero = { x: 100, y: 100, targetX: 100, targetY: 100, size: 30 };
+    let enemies = [], crystals = [];
 
-    function createTile() {
-        if (!gameActive) return;
-        const laneIdx = Math.floor(Math.random() * 4);
-        const tile = document.createElement('div');
-        tile.className = 'tile';
-        tile.style.top = '-150px';
-        lanes[laneIdx].appendChild(tile);
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // --- CYBER AMBIENT MUSIC ENGINE ---
+    function playMusic() {
+        if(!gameActive) return;
+        const now = audioCtx.currentTime;
         
-        tiles.push({ el: tile, lane: laneIdx, y: -150 });
-        
-        setTimeout(createTile, Math.max(400, 1000 - score * 2));
+        // Deep Bass Line
+        const bass = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        bass.type = 'sawtooth';
+        bass.frequency.setValueAtTime(55, now); // A1 note
+        bass.connect(g); g.connect(audioCtx.destination);
+        g.gain.setValueAtTime(0.03, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 2);
+        bass.start(); bass.stop(now + 2);
+
+        // High Pad
+        const pad = audioCtx.createOscillator();
+        pad.type = 'sine';
+        pad.frequency.setValueAtTime(440, now);
+        const g2 = audioCtx.createGain();
+        pad.connect(g2); g2.connect(audioCtx.destination);
+        g2.gain.setValueAtTime(0.01, now);
+        g2.gain.linearRampToValueAtTime(0, now + 4);
+        pad.start(); pad.stop(now + 4);
+
+        setTimeout(playMusic, 2000);
     }
 
+    function playEffect(f, type, dur) {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = type; osc.frequency.value = f;
+        osc.connect(g); g.connect(audioCtx.destination);
+        g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+        osc.start(); osc.stop(audioCtx.currentTime + dur);
+    }
+
+    function startQuest() {
+        document.getElementById('start-screen').style.display = 'none';
+        gameActive = true;
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        playMusic();
+        spawnItems();
+        update();
+    }
+
+    function spawnItems() {
+        if(!gameActive) return;
+        if(enemies.length < 3) {
+            enemies.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, hp: 50 });
+        }
+        if(crystals.length < 5) {
+            crystals.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height });
+        }
+        setTimeout(spawnItems, 3000);
+    }
+
+    window.onpointerdown = (e) => {
+        hero.targetX = e.clientX;
+        hero.targetY = e.clientY;
+    };
+
     function update() {
-        if (!gameActive) return;
+        if(!gameActive) return;
 
-        tiles.forEach((tile, index) => {
-            tile.y += speed;
-            tile.el.style.top = tile.y + 'px';
+        ctx.fillStyle = '#0f0f1a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Agar tile ekrandan chiqib ketsa (o'tkazib yuborilsa)
-            if (tile.y > window.innerHeight) {
-                gameOver();
+        // Move Hero
+        hero.x += (hero.targetX - hero.x) * 0.1;
+        hero.y += (hero.targetY - hero.y) * 0.1;
+
+        // Draw Hero
+        ctx.shadowBlur = 15; ctx.shadowColor = '#00f3ff';
+        ctx.fillStyle = '#00f3ff';
+        ctx.fillRect(hero.x - 15, hero.y - 15, 30, 30);
+        ctx.shadowBlur = 0;
+
+        // Crystals
+        crystals.forEach((c, i) => {
+            ctx.fillStyle = '#ffd700';
+            ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.fill();
+            if(Math.hypot(hero.x - c.x, hero.y - c.y) < 30) {
+                rc += 10;
+                document.getElementById('rc').innerText = rc;
+                playEffect(880, 'sine', 0.1);
+                crystals.splice(i, 1);
             }
         });
 
+        // Enemies
+        enemies.forEach((en, i) => {
+            ctx.fillStyle = '#ff0055';
+            ctx.fillRect(en.x - 15, en.y - 15, 30, 30);
+            
+            let dist = Math.hypot(hero.x - en.x, hero.y - en.y);
+            if(dist < 100) { // Aggro
+                en.x += (hero.x - en.x) * 0.02;
+                en.y += (hero.y - en.y) * 0.02;
+            }
+
+            if(dist < 40) { // Attack
+                hp -= 0.5;
+                document.getElementById('hp').innerText = Math.floor(hp);
+                if(Math.random() > 0.9) playEffect(100, 'sawtooth', 0.1);
+                
+                // Hero attacks back
+                en.hp -= 2;
+                if(en.hp <= 0) {
+                    enemies.splice(i, 1);
+                    rc += 50;
+                    playEffect(400, 'square', 0.2);
+                }
+            }
+        });
+
+        if(hp <= 0) { gameActive = false; alert("REBOOT REQUIRED. RC: " + rc); location.reload(); }
         requestAnimationFrame(update);
     }
-
-    function checkClick(laneIdx) {
-        if (!gameActive) return;
-        
-        // Shu laneda eng pastda turgan tileni topish
-        const laneTiles = tiles.filter(t => t.lane === laneIdx);
-        if (laneTiles.length > 0) {
-            const nearestTile = laneTiles[0];
-            
-            // Masofani tekshirish (ekranning pastki qismida bo'lishi kerak)
-            if (nearestTile.y > window.innerHeight - 300) {
-                score += 20;
-                scoreEl.innerText = score;
-                nearestTile.el.remove();
-                tiles = tiles.filter(t => t !== nearestTile);
-                speed += 0.05; // Qiyinlashish
-            } else {
-                gameOver(); // Juda erta bosildi
-            }
-        }
-    }
-
-    function gameOver() {
-        gameActive = false;
-        msg.style.display = 'flex';
-        document.getElementById('final-score').innerText = score;
-    }
-
-    createTile();
-    update();
 </script>
 </body>
 </html>
